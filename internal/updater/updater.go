@@ -1,37 +1,74 @@
 package updater
 
 import (
-	"encoding/json"
-	"fmt"
-	"io"
-	"net/http"
-	"os"
-	"runtime"
-	"strings"
-	"time"
+    "encoding/json"
+    "fmt"
+    "io"
+    "net/http"
+    "os"
+    "runtime"
+    "path/filepath"
+    "strings"
+    "time"
 
-	"github.com/kacperkwapisz/sortpath/internal/config"
+    "github.com/kacperkwapisz/sortpath/internal/config"
 )
 
 const (
-	githubOwner = "kacperkwapisz"
-	githubRepo  = "sortpath"
-	releaseURL  = "https://api.github.com/repos/%s/%s/releases/latest"
+    githubOwner = "kacperkwapisz"
+    githubRepo  = "sortpath"
+    releaseURL  = "https://api.github.com/repos/%s/%s/releases/latest"
 )
 
 type Release struct {
-	Version     string
-	DownloadURL string
-	PublishedAt time.Time
+    Version     string
+    DownloadURL string
+    PublishedAt time.Time
 }
 
 type githubRelease struct {
-	TagName     string    `json:"tag_name"`
-	PublishedAt time.Time `json:"published_at"`
-	Assets      []struct {
-		Name               string `json:"name"`
-		BrowserDownloadURL string `json:"browser_download_url"`
-	} `json:"assets"`
+    TagName     string    `json:"tag_name"`
+    PublishedAt time.Time `json:"published_at"`
+    Assets      []struct {
+        Name               string `json:"name"`
+        BrowserDownloadURL string `json:"browser_download_url"`
+    } `json:"assets"`
+}
+
+// GetLastUpdateCheck returns the last time updates were checked
+func GetLastUpdateCheck() (time.Time, error) {
+    cacheDir := getCacheDir()
+    filePath := filepath.Join(cacheDir, "last-check")
+    
+    data, err := os.ReadFile(filePath)
+    if err != nil {
+        if os.IsNotExist(err) {
+            return time.Time{}, nil
+        }
+        return time.Time{}, err
+    }
+    
+    lastCheck, err := time.Parse(time.RFC3339, strings.TrimSpace(string(data)))
+    if err != nil {
+        return time.Time{}, err
+    }
+    return lastCheck, nil
+}
+
+// SetLastUpdateCheck sets the last time updates were checked
+func SetLastUpdateCheck(t time.Time) error {
+    cacheDir := getCacheDir()
+    if err := os.MkdirAll(cacheDir, 0755); err != nil {
+        return err
+    }
+    
+    filePath := filepath.Join(cacheDir, "last-check")
+    return os.WriteFile(filePath, []byte(t.Format(time.RFC3339)), 0644)
+}
+
+func getCacheDir() string {
+    homeDir, _ := os.UserHomeDir()
+    return filepath.Join(homeDir, ".cache", "sortpath")
 }
 
 func CheckLatestRelease() (*Release, error) {
