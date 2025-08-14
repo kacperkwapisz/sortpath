@@ -1,0 +1,157 @@
+package main
+
+import (
+	"bufio"
+	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
+
+	"github.com/kacperkwapisz/sortpath/internal/ai"
+	"github.com/kacperkwapisz/sortpath/internal/config"
+	"github.com/kacperkwapisz/sortpath/internal/fs"
+	"github.com/kacperkwapisz/sortpath/pkg/api"
+	"github.com/kacperkwapisz/sortpath/pkg/cli"
+	"github.com/kacperkwapisz/sortpath/internal/updater"
+)
+
+var Version = "dev"
+
+func main() {
+	args := os.Args[1:]
+	if len(args) == 0 || (len(args) == 1 && (args[0] == "-h" || args[0] == "--help")) {
+		cli.PrintHelp(Version)
+		return
+	}
+
+	// Version flag
+	if len(args) == 1 && (args[0] == "-v" || args[0] == "--version") {
+		fmt.Printf("sortpath version %s\n", Version)
+		return
+	}
+
+	// Install subcommand
+	if args[0] == "install" {
+		cli.HandleInstallCommand(args[1:])
+		return
+	}
+
+	// Config subcommand
+	if args[0] == "config" {
+		cli.HandleConfigCommand(args[1:])
+		return
+	}
+
+	// Update subcommand
+	if args[0] == "update" {
+		cli.HandleUpdateCommand(args[1:], Version)
+		return
+	}
+
+	// If the first argument is not "config" and not a quoted description, print help
+	if len(args) == 1 && (args[0] == "list" || args[0] == "set" || args[0] == "get" || args[0] == "remove") {
+		fmt.Fprintf(os.Stderr, "Unknown command: %s\n", args[0])
+		cli.PrintHelp(Version)
+		os.Exit(1)
+	}
+
+	// First-run install prompt (non-blocking in non-interactive environments)
+	maybePromptInstall()
+
+	// Check for updates (non-blocking)
+	if Version != "dev" {
+		go checkForUpdates()
+	}
+
+	// Parse CLI flags and positional
+	opts, desc := cli.ParseArgs(args)
+	if desc == "" {
+		fmt.Fprintf(os.Stderr, "Missing file description.\n")
+		cli.PrintHelp(Version)
+		os.Exit(1)
+	}
+	conf, err := config.ResolveConfig(config.CLIOptions(opts))
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Config error: %v\n", err)
+		os.Exit(1)
+	}
+
+	tree, err := fs.Tree(conf.Tree)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Folder tree error: %v\n", err)
+		os.Exit(1)
+	}
+
+	prompt := ai.BuildPrompt(tree, desc)
+	resp, err := api.QueryLLM(conf, prompt)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "API error: %v\n", err)
+		os.Exit(1)
+	}
+
+	fmt.Println(resp.Path)
+	fmt.Printf("Reason: %s\n", resp.Reason)
+}
+
+func checkForUpdates() {
+	release, err := updater.CheckLatestRelease()
+	if err != nil {
+		// Silently fail for update checks
+		return
+	}
+	if release.Version != Version {
+		fmt.Fprintf(os.Stderr, "\n🚀 New version available: %s (current: %s)\n", release.Version, Version)
+		fmt.Fprintf(os.Stderr, "Run 'sortpath update' to install the latest version\n\n")
+	}
+}
+
+// Add version info to help output
+func init() {
+}
+
+func maybePromptInstall() {
+	// Load config to check suppression
+	c, _ := config.Load()
+	if c.InstallPromptDisabled {
+		return
+	}
+
+	// If executable is already in PATH dir, skip
+	execPath, err := os.Executable()
+	if err != nil {
+		return
+	}
+	execDir := filepath.Dir(execPath)
+	if cliIsDirInPATH(execDir) {
+		return
+	}
+
+	// If stdin is not a terminal, skip prompt
+	if fi, _ := os.Stdin.Stat(); (fi.Mode() & os.ModeCharDevice) == 0 {
+		return
+	}
+
+	reader := bufio.NewReader(os.Stdin)
+	fmt.Print("Install sortpath to /usr/local/bin so you can run it from anywhere? [Y/n]: ")
+	answer, _ := reader.ReadString('\n')
+	answer = strings.TrimSpace(strings.ToLower(answer))
+	if answer == "" || answer == "y" || answer == "yes" {
+		// Attempt install
+		os.Args = append([]string{os.Args[0], "install"}, os.Args[1:]...)
+		cli.HandleInstallCommand([]string{})
+		return
+	}
+	// Save suppression choice
+	_ = config.Set("install-prompt-disabled", "true")
+}
+
+func cliIsDirInPATH(dir string) bool {
+	// mirror of pathContainsDir in cli package, but unexported there; simple recheck here
+	pathEnv := os.Getenv("PATH")
+	for _, p := range strings.Split(pathEnv, ":") {
+		if p == dir {
+			return true
+		}
+	}
+	return false
+}
