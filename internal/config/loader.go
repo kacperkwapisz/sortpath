@@ -1,12 +1,12 @@
 package config
 
 import (
-    "errors"
-    "fmt"
-    "os"
-    "path/filepath"
+	"errors"
+	"fmt"
+	"os"
+	"path/filepath"
 
-    "gopkg.in/yaml.v3"
+	"gopkg.in/yaml.v3"
 )
 
 type CLIOptions struct {
@@ -185,8 +185,16 @@ func ResolveConfig(opts CLIOptions) (*Config, error) {
     if opts.Tree == "" {
         opts.Tree = c.Tree
     }
-    if opts.APIKey == "" || opts.APIBase == "" || opts.Model == "" || opts.Tree == "" {
-        return nil, fmt.Errorf("missing required config (api-key, api-base, model, tree)")
+    // Default to current directory if tree is still empty
+    if opts.Tree == "" {
+        if wd, err := os.Getwd(); err == nil {
+            opts.Tree = wd
+        } else {
+            opts.Tree = "."
+        }
+    }
+    if opts.APIKey == "" || opts.APIBase == "" || opts.Model == "" {
+        return nil, fmt.Errorf("missing required config (api-key, api-base, model)")
     }
     return &Config{
         APIKey:  opts.APIKey,
