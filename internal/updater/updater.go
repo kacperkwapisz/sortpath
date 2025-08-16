@@ -1,17 +1,17 @@
 package updater
 
 import (
-    "encoding/json"
-    "fmt"
-    "io"
-    "net/http"
-    "os"
-    "runtime"
-    "path/filepath"
-    "strings"
-    "time"
+	"encoding/json"
+	"fmt"
+	"io"
+	"net/http"
+	"os"
+	"path/filepath"
+	"runtime"
+	"strings"
+	"time"
 
-    "github.com/kacperkwapisz/sortpath/internal/config"
+	"github.com/kacperkwapisz/sortpath/internal/config"
 )
 
 const (
@@ -89,7 +89,7 @@ func CheckLatestRelease() (*Release, error) {
 	}
 
 	// Find appropriate asset for current platform
-	platform := runtime.GOOS + "_" + runtime.GOARCH
+	platform := runtime.GOOS + "-" + runtime.GOARCH
 	if runtime.GOOS == "windows" {
 		platform += ".exe"
 	}
@@ -175,4 +175,18 @@ func verifyBinary(path string) error {
 func IsInstalled() bool {
 	c, _ := config.Load()
 	return c.InstalledPath != ""
+}
+
+// FormatUpdateNotification returns formatted update notification messages
+func FormatUpdateNotification(latestVersion, currentVersion string, isPassive bool) (string, string) {
+	header := fmt.Sprintf("🚀 New version available: %s (current: %s)", latestVersion, currentVersion)
+	
+	var instruction string
+	if isPassive {
+		instruction = "Run 'sortpath update' to install the latest version ⬆️"
+	} else {
+		instruction = "Update check complete. Run 'sortpath update' to install the new version ⬆️"
+	}
+	
+	return header, instruction
 }

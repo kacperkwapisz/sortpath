@@ -1,17 +1,17 @@
 package cli
 
 import (
-    "flag"
-    "fmt"
-    "io"
-    "os"
-    "path/filepath"
-    "strings"
-    "errors"
-    "time"
+	"errors"
+	"flag"
+	"fmt"
+	"io"
+	"os"
+	"path/filepath"
+	"strings"
+	"time"
 
-    "github.com/kacperkwapisz/sortpath/internal/config"
-    "github.com/kacperkwapisz/sortpath/internal/updater"
+	"github.com/kacperkwapisz/sortpath/internal/config"
+	"github.com/kacperkwapisz/sortpath/internal/updater"
 )
 
 type CLIOptions struct {
@@ -94,7 +94,7 @@ func HandleConfigCommand(args []string) {
         }
         err := config.Set(args[1], args[2])
         if err != nil {
-            fmt.Fprintf(os.Stderr, "Config set error: %v\n", err)
+            fmt.Fprintf(os.Stderr, "❌ Config set error: %v\n", err)
             os.Exit(1)
         }
     case "get":
@@ -104,7 +104,7 @@ func HandleConfigCommand(args []string) {
         }
         val, err := config.Get(args[1])
         if err != nil {
-            fmt.Fprintf(os.Stderr, "Config get error: %v\n", err)
+            fmt.Fprintf(os.Stderr, "❌ Config get error: %v\n", err)
             os.Exit(1)
         }
         fmt.Println(val)
@@ -115,13 +115,13 @@ func HandleConfigCommand(args []string) {
         }
         err := config.Remove(args[1])
         if err != nil {
-            fmt.Fprintf(os.Stderr, "Config remove error: %v\n", err)
+            fmt.Fprintf(os.Stderr, "❌ Config remove error: %v\n", err)
             os.Exit(1)
         }
     case "list":
         conf, err := config.Load()
         if err != nil {
-            fmt.Fprintf(os.Stderr, "Config list error: %v\n", err)
+            fmt.Fprintf(os.Stderr, "❌ Config list error: %v\n", err)
             os.Exit(1)
         }
         for k, v := range conf.ToMap() {
@@ -143,14 +143,14 @@ func HandleInstallCommand(args []string) {
 
     srcPath, err := os.Executable()
     if err != nil {
-        fmt.Fprintf(os.Stderr, "Cannot determine current executable path: %v\n", err)
+        fmt.Fprintf(os.Stderr, "❌ Cannot determine current executable path: %v\n", err)
         os.Exit(1)
     }
 
     destPath := filepath.Join(destDir, "sortpath")
     if !force {
         if _, err := os.Stat(destPath); err == nil {
-            fmt.Fprintf(os.Stderr, "Destination already has sortpath: %s (use --force to overwrite)\n", destPath)
+            fmt.Fprintf(os.Stderr, "⚠️ Destination already has sortpath: %s (use --force to overwrite)\n", destPath)
             os.Exit(1)
         }
     }
@@ -184,7 +184,7 @@ func HandleInstallCommand(args []string) {
                     fmt.Printf("Installed sortpath to %s. Add it to your PATH by adding this to your shell profile:\n\n    export PATH=\"%s:$PATH\"\n\nThen restart your terminal.\n", userDest, fallbackDir)
                 }
             } else {
-                fmt.Printf("Installed sortpath to %s\n", userDest)
+                fmt.Printf("✅ Installed sortpath to %s\n", userDest)
             }
             return
         }
@@ -197,7 +197,7 @@ func HandleInstallCommand(args []string) {
 
     // Save installed path
     _ = config.Set("installed-path", destPath)
-    fmt.Printf("Installed sortpath to %s\n", destPath)
+    fmt.Printf("✅ Installed sortpath to %s\n", destPath)
 }
 
 func HandleUpdateCommand(args []string, currentVersion string) {
@@ -209,35 +209,36 @@ func HandleUpdateCommand(args []string, currentVersion string) {
 
     release, err := updater.CheckLatestRelease()
     if err != nil {
-        fmt.Fprintf(os.Stderr, "Failed to check for updates: %v\n", err)
+        fmt.Fprintf(os.Stderr, "❌ Failed to check for updates: %v\n", err)
         os.Exit(1)
     }
 
     if release.Version == currentVersion {
-        fmt.Printf("You are already running the latest version: %s\n", currentVersion)
+        fmt.Printf("✅ You are already running the latest version: %s\n", currentVersion)
         return
     }
 
-    fmt.Printf("New version available: %s (current: %s)\n", release.Version, currentVersion)
+    header, instruction := updater.FormatUpdateNotification(release.Version, currentVersion, false)
+    fmt.Println(header)
 
     if checkOnly {
-        fmt.Println("Update check complete. Run 'sortpath update' to install the new version.")
+        fmt.Println(instruction)
         return
     }
 
     if !updater.IsInstalled() {
-        fmt.Fprintf(os.Stderr, "Error: sortpath was not installed via the install command.\n")
+        fmt.Fprintf(os.Stderr, "❌ Error: sortpath was not installed via the install command.\n")
         fmt.Fprintf(os.Stderr, "Please reinstall manually or run 'sortpath install' first.\n")
         os.Exit(1)
     }
 
-    fmt.Printf("Downloading and installing version %s...\n", release.Version)
+    fmt.Printf("📦 Downloading and installing version %s...\n", release.Version)
     if err := updater.UpdateBinary(release); err != nil {
-        fmt.Fprintf(os.Stderr, "Failed to install update: %v\n", err)
+        fmt.Fprintf(os.Stderr, "❌ Failed to install update: %v\n", err)
         os.Exit(1)
     }
 
-    fmt.Printf("Successfully updated to version %s!\n", release.Version)
+    fmt.Printf("✅ Successfully updated to version %s!\n", release.Version)
 }
 
 func copyFile(src, dst string) error {

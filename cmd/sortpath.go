@@ -1,19 +1,19 @@
 package main
 
 import (
-    "bufio"
-    "fmt"
-    "os"
-    "path/filepath"
-    "strings"
-    "time"
-    
-    "github.com/kacperkwapisz/sortpath/internal/ai"
-    "github.com/kacperkwapisz/sortpath/internal/config"
-    "github.com/kacperkwapisz/sortpath/internal/fs"
-    "github.com/kacperkwapisz/sortpath/pkg/api"
-    "github.com/kacperkwapisz/sortpath/pkg/cli"
-    "github.com/kacperkwapisz/sortpath/internal/updater"
+	"bufio"
+	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
+	"time"
+
+	"github.com/kacperkwapisz/sortpath/internal/ai"
+	"github.com/kacperkwapisz/sortpath/internal/config"
+	"github.com/kacperkwapisz/sortpath/internal/fs"
+	"github.com/kacperkwapisz/sortpath/internal/updater"
+	"github.com/kacperkwapisz/sortpath/pkg/api"
+	"github.com/kacperkwapisz/sortpath/pkg/cli"
 )
 
 var Version = "dev"
@@ -27,7 +27,7 @@ func main() {
 
     // Version flag
     if len(args) == 1 && (args[0] == "-v" || args[0] == "--version") {
-        fmt.Printf("sortpath version %s\n", Version)
+        fmt.Printf("🔍 sortpath version %s\n", Version)
         return
     }
 
@@ -73,20 +73,20 @@ func main() {
     }
     conf, err := config.ResolveConfig(config.CLIOptions(opts))
     if err != nil {
-        fmt.Fprintf(os.Stderr, "Config error: %v\n", err)
+        fmt.Fprintf(os.Stderr, "❌ Config error: %v\n", err)
         os.Exit(1)
     }
 
     tree, err := fs.Tree(conf.Tree)
     if err != nil {
-        fmt.Fprintf(os.Stderr, "Folder tree error: %v\n", err)
+        fmt.Fprintf(os.Stderr, "❌ Folder tree error: %v\n", err)
         os.Exit(1)
     }
 
     prompt := ai.BuildPrompt(tree, desc)
     resp, err := api.QueryLLM(conf, prompt)
     if err != nil {
-        fmt.Fprintf(os.Stderr, "API error: %v\n", err)
+        fmt.Fprintf(os.Stderr, "❌ API error: %v\n", err)
         os.Exit(1)
     }
 
@@ -127,8 +127,9 @@ func checkForUpdates() {
     _ = updater.SetLastUpdateCheck(now)
 
     if release.Version != Version {
-        fmt.Fprintf(os.Stderr, "\n🚀 New version available: %s (current: %s)\n", release.Version, Version)
-        fmt.Fprintf(os.Stderr, "Run 'sortpath update' to install the latest version\n\n")
+        header, instruction := updater.FormatUpdateNotification(release.Version, Version, true)
+        fmt.Fprintf(os.Stderr, "\n%s\n", header)
+        fmt.Fprintf(os.Stderr, "%s\n\n", instruction)
     }
 }
 
@@ -159,7 +160,7 @@ func maybePromptInstall() {
     }
 
     reader := bufio.NewReader(os.Stdin)
-    fmt.Print("Install sortpath to /usr/local/bin so you can run it from anywhere? [Y/n]: ")
+    fmt.Print("📦 Install sortpath to /usr/local/bin so you can run it from anywhere? [Y/n]: ")
     answer, _ := reader.ReadString('\n')
     answer = strings.TrimSpace(strings.ToLower(answer))
     if answer == "" || answer == "y" || answer == "yes" {

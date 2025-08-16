@@ -1,4 +1,4 @@
-# sortpath — AI-Powered Folder Recommendation CLI
+# 🗂️ sortpath — AI-Powered Folder Recommendation CLI
 
 [![Go Report Card](https://goreportcard.com/badge/github.com/kacperkwapisz/sortpath)](https://goreportcard.com/report/github.com/kacperkwapisz/sortpath)
 [![Release](https://img.shields.io/github/release/kacperkwapisz/sortpath.svg)](https://github.com/kacperkwapisz/sortpath/releases)
@@ -329,7 +329,7 @@ export OPENAI_MODEL="mixtral-8x7b-32768"
 
 ### Common Issues
 
-**"Config error: missing required config"**
+**"❌ Config error: missing required config"**
 
 ```bash
 # Make sure all three required values are set:
@@ -337,14 +337,14 @@ sortpath config list
 # Should show: api-key, api-base, model (tree is optional)
 ```
 
-**"API error: 401 Unauthorized"**
+**"❌ API error: 401 Unauthorized"**
 
 ```bash
 # Check your API key is valid
 curl -H "Authorization: Bearer $OPENAI_API_KEY" https://api.openai.com/v1/models
 ```
 
-**"Folder tree error: no such file or directory"**
+**"❌ Folder tree error: no such file or directory"**
 
 ```bash
 # Set tree to an existing directory path
@@ -353,7 +353,7 @@ sortpath config set tree ~/Documents
 sortpath config remove tree
 ```
 
-**"API error: rate limit exceeded"**
+**"❌ API error: rate limit exceeded"**
 
 - Wait a few minutes before trying again
 - Consider upgrading your API plan
