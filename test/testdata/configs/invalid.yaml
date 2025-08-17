@@ -1,0 +1,4 @@
+api_key: ""
+api_base: "invalid-url"
+model: ""
+log_level: "invalid-level"

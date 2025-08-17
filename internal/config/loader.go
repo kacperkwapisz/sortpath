@@ -1,7 +1,6 @@
 package config
 
 import (
-	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -9,197 +8,157 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-type CLIOptions struct {
-    APIKey  string
-    APIBase string
-    Model   string
-    Tree    string
-}
-
+// Config represents the application configuration with only essential fields
 type Config struct {
-    APIKey  string `yaml:"api_key"`
-    APIBase string `yaml:"api_base"`
-    Model   string `yaml:"model"`
-    Tree    string `yaml:"tree"`
-    // Whether to suppress the interactive install prompt on startup
-    InstallPromptDisabled bool   `yaml:"install_prompt_disabled"`
-    // Where the binary was installed (if installed)
-    InstalledPath         string `yaml:"installed_path"`
-    // Skip automatic update checks
-    DisableAutoUpdate     bool   `yaml:"disable_auto_update"`
+	APIKey   string `yaml:"api_key"`
+	APIBase  string `yaml:"api_base"`
+	Model    string `yaml:"model"`
+	TreePath string `yaml:"tree_path"`
+	LogLevel string `yaml:"log_level"`
 }
 
-var configPath = filepath.Join(os.Getenv("HOME"), ".config", "sortpath", "config.yaml")
+// Loader interface for configuration operations
+type Loader interface {
+	Load() (*Config, error)
+	Save(*Config) error
+}
 
+// FileLoader implements the Loader interface for file-based configuration
+type FileLoader struct {
+	ConfigPath string
+}
+
+// NewFileLoader creates a new FileLoader with the default config path
+func NewFileLoader() *FileLoader {
+	configPath := filepath.Join(os.Getenv("HOME"), ".config", "sortpath", "config.yaml")
+	return &FileLoader{ConfigPath: configPath}
+}
+
+// Load reads configuration from file, returns empty config if file doesn't exist
+func (fl *FileLoader) Load() (*Config, error) {
+	f, err := os.Open(fl.ConfigPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return &Config{}, nil
+		}
+		return nil, fmt.Errorf("failed to open config file: %w", err)
+	}
+	defer f.Close()
+
+	var c Config
+	dec := yaml.NewDecoder(f)
+	if err := dec.Decode(&c); err != nil {
+		return nil, fmt.Errorf("failed to parse config file: %w", err)
+	}
+	return &c, nil
+}
+
+// Save writes configuration to file with secure permissions
+func (fl *FileLoader) Save(c *Config) error {
+	dir := filepath.Dir(fl.ConfigPath)
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		return fmt.Errorf("failed to create config directory: %w", err)
+	}
+
+	f, err := os.Create(fl.ConfigPath)
+	if err != nil {
+		return fmt.Errorf("failed to create config file: %w", err)
+	}
+	defer f.Close()
+
+	// Set secure file permissions (600)
+	if err := f.Chmod(0600); err != nil {
+		return fmt.Errorf("failed to set config file permissions: %w", err)
+	}
+
+	enc := yaml.NewEncoder(f)
+	if err := enc.Encode(c); err != nil {
+		return fmt.Errorf("failed to write config file: %w", err)
+	}
+	return nil
+}
+
+// Default configuration values
+var defaults = Config{
+	APIBase:  "https://api.openai.com/v1",
+	Model:    "gpt-3.5-turbo",
+	TreePath: ".",
+	LogLevel: "info",
+}
+
+// Load is a convenience function that uses the default FileLoader
 func Load() (*Config, error) {
-    f, err := os.Open(configPath)
-    if err != nil {
-        if os.IsNotExist(err) {
-            return &Config{}, nil
-        }
-        return nil, err
-    }
-    defer f.Close()
-    var c Config
-    dec := yaml.NewDecoder(f)
-    if err := dec.Decode(&c); err != nil {
-        return nil, err
-    }
-    return &c, nil
+	loader := NewFileLoader()
+	return loader.Load()
 }
 
+// Save is a convenience function that uses the default FileLoader
 func Save(c *Config) error {
-    dir := filepath.Dir(configPath)
-    if err := os.MkdirAll(dir, 0700); err != nil {
-        return err
-    }
-    f, err := os.Create(configPath)
-    if err != nil {
-        return err
-    }
-    defer f.Close()
-    enc := yaml.NewEncoder(f)
-    return enc.Encode(c)
+	loader := NewFileLoader()
+	return loader.Save(c)
 }
 
-func Set(key, value string) error {
-    c, _ := Load()
-    switch key {
-    case "api-key":
-        c.APIKey = value
-    case "api_base", "api-base":
-        c.APIBase = value
-    case "model":
-        c.Model = value
-    case "tree":
-        c.Tree = value
-    case "install-prompt-disabled":
-        if value == "true" || value == "1" || value == "yes" || value == "y" {
-            c.InstallPromptDisabled = true
-        } else {
-            c.InstallPromptDisabled = false
-        }
-    case "installed-path":
-        c.InstalledPath = value
-    case "disable-auto-update":
-        if value == "true" || value == "1" || value == "yes" || value == "y" {
-            c.DisableAutoUpdate = true
-        } else {
-            c.DisableAutoUpdate = false
-        }
-    default:
-        return errors.New("unknown config key")
-    }
-    return Save(c)
+// CLIOptions represents command-line configuration options
+type CLIOptions struct {
+	APIKey   string
+	APIBase  string
+	Model    string
+	TreePath string
+	LogLevel string
 }
 
-func Get(key string) (string, error) {
-    c, _ := Load()
-    switch key {
-    case "api-key":
-        return c.APIKey, nil
-    case "api_base", "api-base":
-        return c.APIBase, nil
-    case "model":
-        return c.Model, nil
-    case "tree":
-        return c.Tree, nil
-    case "install-prompt-disabled":
-        if c.InstallPromptDisabled {
-            return "true", nil
-        }
-        return "false", nil
-    case "installed-path":
-        return c.InstalledPath, nil
-    case "disable-auto-update":
-        if c.DisableAutoUpdate {
-            return "true", nil
-        }
-        return "false", nil
-    default:
-        return "", errors.New("unknown config key")
-    }
-}
-
-func Remove(key string) error {
-    c, _ := Load()
-    switch key {
-    case "api-key":
-        c.APIKey = ""
-    case "api_base", "api-base":
-        c.APIBase = ""
-    case "model":
-        c.Model = ""
-    case "tree":
-        c.Tree = ""
-    case "install-prompt-disabled":
-        c.InstallPromptDisabled = false
-    case "installed-path":
-        c.InstalledPath = ""
-    case "disable-auto-update":
-        c.DisableAutoUpdate = false
-    default:
-        return errors.New("unknown config key")
-    }
-    return Save(c)
-}
-
-func (c *Config) ToMap() map[string]string {
-    return map[string]string{
-        "api-key":  c.APIKey,
-        "api-base": c.APIBase,
-        "model":    c.Model,
-        "tree":     c.Tree,
-        "install-prompt-disabled": func() string { if c.InstallPromptDisabled { return "true" } else { return "false" } }(),
-        "installed-path":          c.InstalledPath,
-        "disable-auto-update":     func() string { if c.DisableAutoUpdate { return "true" } else { return "false" } }(),
-    }
-}
-
-// CLI flag > ENV > config.yaml
+// ResolveConfig resolves configuration with priority: CLI > ENV > file > defaults
 func ResolveConfig(opts CLIOptions) (*Config, error) {
-    c, _ := Load()
-    // ENV fallback
-    if opts.APIKey == "" {
-        opts.APIKey = os.Getenv("OPENAI_API_KEY")
-    }
-    if opts.APIBase == "" {
-        opts.APIBase = os.Getenv("OPENAI_API_BASE")
-    }
-    if opts.Model == "" {
-        opts.Model = os.Getenv("OPENAI_MODEL")
-    }
-    if opts.Tree == "" {
-        opts.Tree = os.Getenv("SORTPATH_FOLDER_TREE")
-    }
-    // Config fallback
-    if opts.APIKey == "" {
-        opts.APIKey = c.APIKey
-    }
-    if opts.APIBase == "" {
-        opts.APIBase = c.APIBase
-    }
-    if opts.Model == "" {
-        opts.Model = c.Model
-    }
-    if opts.Tree == "" {
-        opts.Tree = c.Tree
-    }
-    // Default to current directory if tree is still empty
-    if opts.Tree == "" {
-        if wd, err := os.Getwd(); err == nil {
-            opts.Tree = wd
-        } else {
-            opts.Tree = "."
-        }
-    }
-    if opts.APIKey == "" || opts.APIBase == "" || opts.Model == "" {
-        return nil, fmt.Errorf("missing required config (api-key, api-base, model)")
-    }
-    return &Config{
-        APIKey:  opts.APIKey,
-        APIBase: opts.APIBase,
-        Model:   opts.Model,
-        Tree:    opts.Tree,
-    }, nil
+	return ResolveConfigWithLoader(opts, NewFileLoader())
+}
+
+// ResolveConfigWithLoader resolves configuration using a custom loader (useful for testing)
+func ResolveConfigWithLoader(opts CLIOptions, loader Loader) (*Config, error) {
+	// Load from file first
+	fileConfig, _ := loader.Load()
+
+	// Apply priority resolution: CLI > ENV > file > defaults
+	resolved := &Config{
+		APIKey:   resolveValue(opts.APIKey, os.Getenv("OPENAI_API_KEY"), fileConfig.APIKey, ""),
+		APIBase:  resolveValue(opts.APIBase, os.Getenv("OPENAI_API_BASE"), fileConfig.APIBase, defaults.APIBase),
+		Model:    resolveValue(opts.Model, os.Getenv("OPENAI_MODEL"), fileConfig.Model, defaults.Model),
+		TreePath: resolveValue(opts.TreePath, os.Getenv("SORTPATH_FOLDER_TREE"), fileConfig.TreePath, defaults.TreePath),
+		LogLevel: resolveValue(opts.LogLevel, os.Getenv("SORTPATH_LOG_LEVEL"), fileConfig.LogLevel, defaults.LogLevel),
+	}
+
+	// Apply default for TreePath if still empty
+	if resolved.TreePath == "." || resolved.TreePath == "" {
+		if wd, err := os.Getwd(); err == nil {
+			resolved.TreePath = wd
+		} else {
+			resolved.TreePath = "."
+		}
+	}
+
+	// Validate required fields
+	if resolved.APIKey == "" {
+		return nil, fmt.Errorf("API key is required. Set it with: sortpath config set api-key YOUR_KEY")
+	}
+	if resolved.APIBase == "" {
+		return nil, fmt.Errorf("API base URL is required. Set it with: sortpath config set api-base https://api.openai.com/v1")
+	}
+	if resolved.Model == "" {
+		return nil, fmt.Errorf("model is required. Set it with: sortpath config set model gpt-3.5-turbo")
+	}
+
+	return resolved, nil
+}
+
+// resolveValue applies priority resolution for a single config value
+func resolveValue(cli, env, file, defaultVal string) string {
+	if cli != "" {
+		return cli
+	}
+	if env != "" {
+		return env
+	}
+	if file != "" {
+		return file
+	}
+	return defaultVal
 }

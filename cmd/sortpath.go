@@ -71,13 +71,13 @@ func main() {
         cli.PrintHelp(Version)
         os.Exit(1)
     }
-    conf, err := config.ResolveConfig(config.CLIOptions(opts))
+    conf, err := config.ResolveConfig(opts)
     if err != nil {
         fmt.Fprintf(os.Stderr, "❌ Config error: %v\n", err)
         os.Exit(1)
     }
 
-    tree, err := fs.Tree(conf.Tree)
+    tree, err := fs.Tree(conf.TreePath)
     if err != nil {
         fmt.Fprintf(os.Stderr, "❌ Folder tree error: %v\n", err)
         os.Exit(1)
@@ -99,10 +99,7 @@ func checkForUpdates() {
         return
     }
 
-    c, _ := config.Load()
-    if c.DisableAutoUpdate {
-        return
-    }
+    // Auto-update checks are now always enabled (following YAGNI principle)
 
     // Check if it's been at least 1 minute since last check
     lastCheck, err := updater.GetLastUpdateCheck()
@@ -138,11 +135,7 @@ func init() {
 }
 
 func maybePromptInstall() {
-    // Load config to check suppression
-    c, _ := config.Load()
-    if c.InstallPromptDisabled {
-        return
-    }
+    // Always show install prompt if not already installed (following YAGNI principle)
 
     // If executable is already in PATH dir, skip
     execPath, err := os.Executable()
@@ -169,8 +162,7 @@ func maybePromptInstall() {
         cli.HandleInstallCommand([]string{})
         return
     }
-    // Save suppression choice
-    _ = config.Set("install-prompt-disabled", "true")
+    // User declined installation - no need to track this anymore
 }
 
 func cliIsDirInPATH(dir string) bool {

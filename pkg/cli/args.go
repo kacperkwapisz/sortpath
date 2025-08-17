@@ -14,20 +14,16 @@ import (
 	"github.com/kacperkwapisz/sortpath/internal/updater"
 )
 
-type CLIOptions struct {
-    APIKey  string
-    APIBase string
-    Model   string
-    Tree    string
-}
+// CLIOptions is now defined in the config package
 
-func ParseArgs(args []string) (CLIOptions, string) {
-    var opts CLIOptions
+func ParseArgs(args []string) (config.CLIOptions, string) {
+    var opts config.CLIOptions
     fs := flag.NewFlagSet("sortpath", flag.ContinueOnError)
     fs.StringVar(&opts.APIKey, "api-key", "", "OpenAI-compatible API key")
     fs.StringVar(&opts.APIBase, "api-base", "", "API base URL")
     fs.StringVar(&opts.Model, "model", "", "Model name")
-    fs.StringVar(&opts.Tree, "tree", "", "Path to folder tree file")
+    fs.StringVar(&opts.TreePath, "tree", "", "Path to folder tree file")
+    fs.StringVar(&opts.LogLevel, "log-level", "", "Log level (debug, info, error)")
     fs.SetOutput(os.Stderr)
 
     // Find first non-flag arg as description
@@ -56,11 +52,12 @@ Usage:
     sortpath update [--check-only]
 
 Flags:
-  --api-key   OpenAI-compatible API key
-  --api-base  API base URL (e.g. https://api.openai.com/v1)
-  --model     Model name (e.g. gpt-3.5-turbo)
-  --tree      Path to folder tree file
-    -v, --version  Show version
+  --api-key    OpenAI-compatible API key
+  --api-base   API base URL (e.g. https://api.openai.com/v1)
+  --model      Model name (e.g. gpt-3.5-turbo)
+  --tree       Path to folder tree file
+  --log-level  Log level (debug, info, error)
+  -v, --version  Show version
 
 Config subcommands:
   config set <key> <value>
@@ -92,7 +89,7 @@ func HandleConfigCommand(args []string) {
             fmt.Println("Usage: sortpath config set <key> <value>")
             return
         }
-        err := config.Set(args[1], args[2])
+        err := setConfigValue(args[1], args[2])
         if err != nil {
             fmt.Fprintf(os.Stderr, "❌ Config set error: %v\n", err)
             os.Exit(1)
@@ -102,7 +99,7 @@ func HandleConfigCommand(args []string) {
             fmt.Println("Usage: sortpath config get <key>")
             return
         }
-        val, err := config.Get(args[1])
+        val, err := getConfigValue(args[1])
         if err != nil {
             fmt.Fprintf(os.Stderr, "❌ Config get error: %v\n", err)
             os.Exit(1)
@@ -113,7 +110,7 @@ func HandleConfigCommand(args []string) {
             fmt.Println("Usage: sortpath config remove <key>")
             return
         }
-        err := config.Remove(args[1])
+        err := removeConfigValue(args[1])
         if err != nil {
             fmt.Fprintf(os.Stderr, "❌ Config remove error: %v\n", err)
             os.Exit(1)
@@ -124,7 +121,14 @@ func HandleConfigCommand(args []string) {
             fmt.Fprintf(os.Stderr, "❌ Config list error: %v\n", err)
             os.Exit(1)
         }
-        for k, v := range conf.ToMap() {
+        configMap := map[string]string{
+            "api-key":   conf.APIKey,
+            "api-base":  conf.APIBase,
+            "model":     conf.Model,
+            "tree-path": conf.TreePath,
+            "log-level": conf.LogLevel,
+        }
+        for k, v := range configMap {
             fmt.Printf("%s: %s\n", k, v)
         }
     default:
@@ -173,7 +177,6 @@ func HandleInstallCommand(args []string) {
                 os.Exit(1)
             }
             _ = os.Chmod(userDest, 0755)
-            _ = config.Set("installed-path", userDest)
 
             // Ensure PATH contains fallbackDir; if not, attempt to add to shell profile
             if !pathContainsDir(fallbackDir) {
@@ -195,8 +198,7 @@ func HandleInstallCommand(args []string) {
     // Make executable
     _ = os.Chmod(destPath, 0755)
 
-    // Save installed path
-    _ = config.Set("installed-path", destPath)
+    // Installation complete
     fmt.Printf("✅ Installed sortpath to %s\n", destPath)
 }
 
@@ -292,6 +294,62 @@ func pathContainsDir(dir string) bool {
         }
     }
     return false
+}
+
+func setConfigValue(key, value string) error {
+    c, _ := config.Load()
+    switch key {
+    case "api-key":
+        c.APIKey = value
+    case "api-base":
+        c.APIBase = value
+    case "model":
+        c.Model = value
+    case "tree-path":
+        c.TreePath = value
+    case "log-level":
+        c.LogLevel = value
+    default:
+        return fmt.Errorf("unknown config key: %s", key)
+    }
+    return config.Save(c)
+}
+
+func getConfigValue(key string) (string, error) {
+    c, _ := config.Load()
+    switch key {
+    case "api-key":
+        return c.APIKey, nil
+    case "api-base":
+        return c.APIBase, nil
+    case "model":
+        return c.Model, nil
+    case "tree-path":
+        return c.TreePath, nil
+    case "log-level":
+        return c.LogLevel, nil
+    default:
+        return "", fmt.Errorf("unknown config key: %s", key)
+    }
+}
+
+func removeConfigValue(key string) error {
+    c, _ := config.Load()
+    switch key {
+    case "api-key":
+        c.APIKey = ""
+    case "api-base":
+        c.APIBase = ""
+    case "model":
+        c.Model = ""
+    case "tree-path":
+        c.TreePath = ""
+    case "log-level":
+        c.LogLevel = ""
+    default:
+        return fmt.Errorf("unknown config key: %s", key)
+    }
+    return config.Save(c)
 }
 
 func addDirToShellPATH(dir string) (profilePath string, added bool, err error) {

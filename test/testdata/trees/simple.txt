@@ -1,0 +1,8 @@
+project/
+├── src/
+│   ├── main.go
+│   └── utils.go
+├── docs/
+│   └── README.md
+└── tests/
+    └── main_test.go

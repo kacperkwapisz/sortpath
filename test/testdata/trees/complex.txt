@@ -1,0 +1,21 @@
+enterprise-app/
+├── cmd/
+│   ├── server/
+│   │   └── main.go
+│   └── cli/
+│       └── main.go
+├── internal/
+│   ├── api/
+│   │   ├── handlers/
+│   │   └── middleware/
+│   ├── config/
+│   └── database/
+├── pkg/
+│   ├── auth/
+│   └── utils/
+├── web/
+│   ├── static/
+│   └── templates/
+└── docs/
+    ├── api/
+    └── deployment/

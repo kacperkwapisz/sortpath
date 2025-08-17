@@ -10,8 +10,6 @@ import (
 	"runtime"
 	"strings"
 	"time"
-
-	"github.com/kacperkwapisz/sortpath/internal/config"
 )
 
 const (
@@ -171,10 +169,29 @@ func verifyBinary(path string) error {
 	return nil
 }
 
-// IsInstalled returns true if sortpath was installed via the install command
+// IsInstalled returns true if sortpath appears to be installed in a standard location
 func IsInstalled() bool {
-	c, _ := config.Load()
-	return c.InstalledPath != ""
+	execPath, err := os.Executable()
+	if err != nil {
+		return false
+	}
+	
+	// Check if executable is in common installation directories
+	execDir := filepath.Dir(execPath)
+	commonPaths := []string{
+		"/usr/local/bin",
+		"/usr/bin",
+		filepath.Join(os.Getenv("HOME"), "bin"),
+		filepath.Join(os.Getenv("HOME"), ".local", "bin"),
+	}
+	
+	for _, path := range commonPaths {
+		if execDir == path {
+			return true
+		}
+	}
+	
+	return false
 }
 
 // FormatUpdateNotification returns formatted update notification messages
