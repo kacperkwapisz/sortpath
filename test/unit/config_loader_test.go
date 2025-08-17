@@ -79,10 +79,18 @@ invalid_yaml: [unclosed bracket
 	}
 
 	loader := &config.FileLoader{ConfigPath: configPath}
-	_, err = loader.Load()
+	cfg, err := loader.Load()
 
-	if err == nil {
-		t.Error("Expected error for invalid YAML, got nil")
+	// With the new edge case handler, corrupted files should return defaults, not error
+	if err != nil {
+		t.Errorf("Unexpected error for invalid YAML: %v", err)
+	}
+	if cfg == nil {
+		t.Error("Expected default config for invalid YAML, got nil")
+	}
+	// Should return defaults
+	if cfg.APIBase != "https://api.openai.com/v1" {
+		t.Errorf("Expected default APIBase for invalid YAML, got: %v", cfg.APIBase)
 	}
 }
 

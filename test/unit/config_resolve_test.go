@@ -10,11 +10,12 @@ import (
 
 func TestResolveConfig_CLIPriority(t *testing.T) {
 	// CLI options should take highest priority
+	tmpDir := t.TempDir()
 	opts := config.CLIOptions{
 		APIKey:   "cli-key",
 		APIBase:  "https://cli.example.com",
 		Model:    "cli-model",
-		TreePath: "/cli/path",
+		TreePath: tmpDir,
 		LogLevel: "debug",
 	}
 
@@ -44,12 +45,13 @@ func TestResolveConfig_CLIPriority(t *testing.T) {
 
 func TestResolveConfig_EnvPriority(t *testing.T) {
 	// Environment variables should take priority over file and defaults
+	tmpDir := t.TempDir()
 	opts := config.CLIOptions{} // Empty CLI options
 
 	os.Setenv("OPENAI_API_KEY", "env-key")
 	os.Setenv("OPENAI_API_BASE", "https://env.example.com")
 	os.Setenv("OPENAI_MODEL", "env-model")
-	os.Setenv("SORTPATH_FOLDER_TREE", "/env/path")
+	os.Setenv("SORTPATH_FOLDER_TREE", tmpDir)
 	os.Setenv("SORTPATH_LOG_LEVEL", "error")
 	defer func() {
 		os.Unsetenv("OPENAI_API_KEY")

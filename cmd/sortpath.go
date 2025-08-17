@@ -135,7 +135,10 @@ func init() {
 }
 
 func maybePromptInstall() {
-    // Always show install prompt if not already installed (following YAGNI principle)
+    // Check if we should prompt based on environment
+    if !config.DefaultEnvironmentDetector.ShouldPromptUser() {
+        return
+    }
 
     // If executable is already in PATH dir, skip
     execPath, err := os.Executable()
@@ -144,11 +147,6 @@ func maybePromptInstall() {
     }
     execDir := filepath.Dir(execPath)
     if cliIsDirInPATH(execDir) {
-        return
-    }
-
-    // If stdin is not a terminal, skip prompt
-    if fi, _ := os.Stdin.Stat(); (fi.Mode() & os.ModeCharDevice) == 0 {
         return
     }
 

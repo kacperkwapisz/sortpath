@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -122,7 +123,7 @@ func HandleConfigCommand(args []string) {
             os.Exit(1)
         }
         configMap := map[string]string{
-            "api-key":   conf.APIKey,
+            "api-key":   config.RedactSensitiveValue("api-key", conf.APIKey),
             "api-base":  conf.APIBase,
             "model":     conf.Model,
             "tree-path": conf.TreePath,
@@ -297,21 +298,55 @@ func pathContainsDir(dir string) bool {
 }
 
 func setConfigValue(key, value string) error {
+    // Validate the config key first
+    if err := config.ValidateConfigKey(key); err != nil {
+        return err
+    }
+
+    // Sanitize the value
+    sanitizedValue, err := config.SanitizeConfigValue(key, value)
+    if err != nil {
+        return err
+    }
+
     c, _ := config.Load()
+    
+    // Set the sanitized value
     switch key {
     case "api-key":
-        c.APIKey = value
+        if sanitizedValue == "" {
+            return fmt.Errorf("API key cannot be empty")
+        }
+        c.APIKey = sanitizedValue
     case "api-base":
-        c.APIBase = value
+        if sanitizedValue == "" {
+            return fmt.Errorf("API base URL cannot be empty")
+        }
+        // Additional URL validation
+        if _, err := url.Parse(sanitizedValue); err != nil {
+            return fmt.Errorf("invalid API base URL '%s': %v. Use format: https://api.openai.com/v1", sanitizedValue, err)
+        }
+        c.APIBase = sanitizedValue
     case "model":
-        c.Model = value
+        if sanitizedValue == "" {
+            return fmt.Errorf("model cannot be empty")
+        }
+        c.Model = sanitizedValue
     case "tree-path":
-        c.TreePath = value
+        if sanitizedValue != "" && sanitizedValue != "." {
+            // Validate path exists and is readable
+            if _, err := os.Stat(sanitizedValue); err != nil {
+                if os.IsNotExist(err) {
+                    return fmt.Errorf("tree path '%s' does not exist. Use an existing directory path", sanitizedValue)
+                }
+                return fmt.Errorf("cannot access tree path '%s': %v", sanitizedValue, err)
+            }
+        }
+        c.TreePath = sanitizedValue
     case "log-level":
-        c.LogLevel = value
-    default:
-        return fmt.Errorf("unknown config key: %s", key)
+        c.LogLevel = sanitizedValue
     }
+    
     return config.Save(c)
 }
 

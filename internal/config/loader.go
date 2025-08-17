@@ -2,8 +2,10 @@ package config
 
 import (
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"gopkg.in/yaml.v3"
 )
@@ -15,6 +17,57 @@ type Config struct {
 	Model    string `yaml:"model"`
 	TreePath string `yaml:"tree_path"`
 	LogLevel string `yaml:"log_level"`
+}
+
+// Validate checks if the configuration is valid and returns helpful error messages
+func (c *Config) Validate() error {
+	if c.APIKey == "" {
+		return fmt.Errorf("API key is required. Set it with: sortpath config set api-key YOUR_KEY")
+	}
+
+	if c.APIBase == "" {
+		return fmt.Errorf("API base URL is required. Set it with: sortpath config set api-base https://api.openai.com/v1")
+	}
+
+	// Validate API base URL format
+	parsedURL, err := url.Parse(c.APIBase)
+	if err != nil {
+		return fmt.Errorf("invalid API base URL '%s': %v. Use format: https://api.openai.com/v1", c.APIBase, err)
+	}
+	if parsedURL.Scheme != "http" && parsedURL.Scheme != "https" {
+		return fmt.Errorf("API base URL must use http or https scheme, got '%s'. Use format: https://api.openai.com/v1", c.APIBase)
+	}
+
+	if c.Model == "" {
+		return fmt.Errorf("model is required. Set it with: sortpath config set model gpt-3.5-turbo")
+	}
+
+	// Validate log level
+	validLogLevels := []string{"debug", "info", "error"}
+	if c.LogLevel != "" {
+		valid := false
+		for _, level := range validLogLevels {
+			if strings.ToLower(c.LogLevel) == level {
+				valid = true
+				break
+			}
+		}
+		if !valid {
+			return fmt.Errorf("invalid log level '%s'. Valid options: %s", c.LogLevel, strings.Join(validLogLevels, ", "))
+		}
+	}
+
+	// Validate tree path exists and is readable
+	if c.TreePath != "" && c.TreePath != "." {
+		if _, err := os.Stat(c.TreePath); err != nil {
+			if os.IsNotExist(err) {
+				return fmt.Errorf("tree path '%s' does not exist. Use an existing directory path", c.TreePath)
+			}
+			return fmt.Errorf("cannot access tree path '%s': %v", c.TreePath, err)
+		}
+	}
+
+	return nil
 }
 
 // Loader interface for configuration operations
@@ -39,7 +92,12 @@ func (fl *FileLoader) Load() (*Config, error) {
 	f, err := os.Open(fl.ConfigPath)
 	if err != nil {
 		if os.IsNotExist(err) {
+			// File doesn't exist, return empty config (will use defaults)
 			return &Config{}, nil
+		}
+		if os.IsPermission(err) {
+			// Handle permission errors based on environment
+			return nil, DefaultEdgeCaseHandler.HandlePermissionError(fl.ConfigPath, "read")
 		}
 		return nil, fmt.Errorf("failed to open config file: %w", err)
 	}
@@ -48,33 +106,30 @@ func (fl *FileLoader) Load() (*Config, error) {
 	var c Config
 	dec := yaml.NewDecoder(f)
 	if err := dec.Decode(&c); err != nil {
-		return nil, fmt.Errorf("failed to parse config file: %w", err)
+		// Handle corrupted config file
+		recoveredConfig, recoverErr := DefaultEdgeCaseHandler.HandleCorruptedConfig(fl.ConfigPath, err)
+		if recoverErr != nil {
+			return nil, fmt.Errorf("failed to parse config file: %w", err)
+		}
+		// Return recovered config (with defaults) but log the original error
+		return recoveredConfig, nil
 	}
 	return &c, nil
 }
 
-// Save writes configuration to file with secure permissions
+// Save writes configuration to file with secure permissions using atomic operations
 func (fl *FileLoader) Save(c *Config) error {
-	dir := filepath.Dir(fl.ConfigPath)
-	if err := os.MkdirAll(dir, 0700); err != nil {
-		return fmt.Errorf("failed to create config directory: %w", err)
-	}
-
-	f, err := os.Create(fl.ConfigPath)
+	// Marshal the config to YAML
+	data, err := yaml.Marshal(c)
 	if err != nil {
-		return fmt.Errorf("failed to create config file: %w", err)
-	}
-	defer f.Close()
-
-	// Set secure file permissions (600)
-	if err := f.Chmod(0600); err != nil {
-		return fmt.Errorf("failed to set config file permissions: %w", err)
+		return fmt.Errorf("failed to marshal config: %w", err)
 	}
 
-	enc := yaml.NewEncoder(f)
-	if err := enc.Encode(c); err != nil {
-		return fmt.Errorf("failed to write config file: %w", err)
+	// Use atomic write for safety
+	if err := DefaultSecureFileOps.AtomicWrite(fl.ConfigPath, data); err != nil {
+		return fmt.Errorf("failed to save config file: %w", err)
 	}
+
 	return nil
 }
 
@@ -116,6 +171,9 @@ func ResolveConfig(opts CLIOptions) (*Config, error) {
 func ResolveConfigWithLoader(opts CLIOptions, loader Loader) (*Config, error) {
 	// Load from file first
 	fileConfig, _ := loader.Load()
+	if fileConfig == nil {
+		fileConfig = &Config{} // Use empty config if loading failed
+	}
 
 	// Apply priority resolution: CLI > ENV > file > defaults
 	resolved := &Config{
@@ -135,15 +193,9 @@ func ResolveConfigWithLoader(opts CLIOptions, loader Loader) (*Config, error) {
 		}
 	}
 
-	// Validate required fields
-	if resolved.APIKey == "" {
-		return nil, fmt.Errorf("API key is required. Set it with: sortpath config set api-key YOUR_KEY")
-	}
-	if resolved.APIBase == "" {
-		return nil, fmt.Errorf("API base URL is required. Set it with: sortpath config set api-base https://api.openai.com/v1")
-	}
-	if resolved.Model == "" {
-		return nil, fmt.Errorf("model is required. Set it with: sortpath config set model gpt-3.5-turbo")
+	// Validate the resolved configuration
+	if err := resolved.Validate(); err != nil {
+		return nil, err
 	}
 
 	return resolved, nil
